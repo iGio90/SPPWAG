@@ -1,0 +1,4 @@
+qdarkgraystyle==1.0.2
+hexdump==3.3
+PyByteBuffer==1.0.5
+PyQt5==5.15.2
