@@ -12,11 +12,13 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER I
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
+import json
+import os
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
 from PyQt5.QtWidgets import QTreeView, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QDialog, \
-    QDialogButtonBox, QHeaderView, QComboBox
+    QDialogButtonBox, QHeaderView, QComboBox, QFileDialog
 
 from lib.data_type import DataType, DATA_TYPES, BIG_ENDIAN, LITTLE_ENDIAN
 
@@ -88,13 +90,27 @@ class QStructLayout(QVBoxLayout):
         self.data_tree.setModel(self.data_model)
         self.data_tree.header().setSectionResizeMode(0, QHeaderView.Stretch)
 
-        data_tree_buttons_container = QHBoxLayout()
+        data_tree_buttons_container = QVBoxLayout()
+        data_tree_add_remove_container = QHBoxLayout()
+        data_tree_load_save_container = QHBoxLayout()
+
         data_tree_add = QPushButton("Add")
         data_tree_add.clicked.connect(self.add_data)
         data_tree_remove = QPushButton("Remove")
         data_tree_remove.clicked.connect(self.remove_data)
-        data_tree_buttons_container.addWidget(data_tree_add)
-        data_tree_buttons_container.addWidget(data_tree_remove)
+        data_tree_add_remove_container.addWidget(data_tree_add)
+        data_tree_add_remove_container.addWidget(data_tree_remove)
+
+        self.data_tree_save = QPushButton('Save')
+        self.data_tree_save.clicked.connect(self.save_struct)
+        self.data_tree_save.setEnabled(False)
+        data_tree_load_save_container.addWidget(self.data_tree_save)
+        data_tree_load = QPushButton('Load')
+        data_tree_load.clicked.connect(self.load_struct)
+        data_tree_load_save_container.addWidget(data_tree_load)
+
+        data_tree_buttons_container.addLayout(data_tree_add_remove_container)
+        data_tree_buttons_container.addLayout(data_tree_load_save_container)
 
         self.addWidget(self.data_tree)
         self.addLayout(data_tree_buttons_container)
@@ -105,15 +121,12 @@ class QStructLayout(QVBoxLayout):
             selections = dlg.data_types_tree.selectionModel().selectedIndexes()
             if len(selections) > 0:
                 if dlg.endianness.isEnabled():
-                    endianness_text = dlg.endianness.currentText()
                     endianness = dlg.endianness.currentIndex()
                 else:
-                    endianness_text = ''
                     endianness = 0
 
                 type_item = dlg.data_types_model.item(selections[0].row(), 0)
                 type_index = type_item.data(Qt.UserRole)
-                type_label = type_item.text()
 
                 length_type = None
                 if type_index > 4:
@@ -128,23 +141,28 @@ class QStructLayout(QVBoxLayout):
                     length_type = DataType(
                         dlg.data_types_model.item(selections[0].row(), 0).data(Qt.UserRole), length_endianness)
 
-                data_type = DataType(type_index, endianness, length_type=length_type)
+                self.create_data_struct(type_index, endianness, length_type)
 
-                item_type = QStandardItem(type_label)
-                item_type.setData(data_type, Qt.UserRole)
-                item_type.setEditable(False)
-
-                if length_type is None:
-                    item_length = QStandardItem(str(data_type.get_length()))
-                else:
-                    item_length = QStandardItem(DATA_TYPES[length_type.data_type][0])
-                item_length.setEditable(False)
-
-                item_endianness = QStandardItem(endianness_text)
-                item_endianness.setEditable(False)
-                self.data_model.appendRow([item_type, item_length, item_endianness])
-
+                self.invalidate_ui()
                 self.sppwag.process()
+
+    def create_data_struct(self, type_index, endianness, length_type):
+        data_type = DataType(type_index, endianness, length_type=length_type)
+        data_type_const = DATA_TYPES[type_index]
+
+        item_type = QStandardItem(data_type_const[0])
+        item_type.setData(data_type, Qt.UserRole)
+        item_type.setEditable(False)
+
+        if length_type is None:
+            item_length = QStandardItem(str(data_type.get_length()))
+        else:
+            item_length = QStandardItem(DATA_TYPES[length_type.data_type][0])
+        item_length.setEditable(False)
+
+        item_endianness = QStandardItem('big' if endianness == 0 else 'little')
+        item_endianness.setEditable(False)
+        self.data_model.appendRow([item_type, item_length, item_endianness])
 
     def remove_data(self):
         selections = self.data_tree.selectionModel().selectedIndexes()
@@ -152,7 +170,45 @@ class QStructLayout(QVBoxLayout):
             for x in selections:
                 self.data_model.removeRow(x.row())
 
+            self.invalidate_ui()
             self.sppwag.process()
+
+    def save_struct(self):
+        struct = []
+        for x in self.get_struct():
+            struct.append(x.serialize())
+        
+        file_name, _type = QFileDialog().getSaveFileName(filter="SPPWAG (*.sppwag)", initialFilter="SPPWAG (*.sppwag)")
+        if file_name and len(file_name) > 0:
+            with open(file_name, 'w') as fp:
+                fp.write(json.dumps(struct, indent=2))
+
+    def load_struct(self):
+        dlg = QFileDialog()
+        dlg.setFileMode(QFileDialog.AnyFile)
+        dlg.setNameFilters(["SPPWAG (*.sppwag)"])
+        dlg.selectNameFilter("SPPWAG (*.sppwag)")
+        if dlg.exec_():
+            f = dlg.selectedFiles()
+            if len(f) > 0:
+                f = f[0]
+                try:
+                    with open(f, 'r') as fp:
+                        f = json.load(fp)
+                except:
+                    return
+
+                self.data_model.setRowCount(0)
+                for data in f:
+                    length_type = data['length']
+                    if length_type is not None:
+                        length_type = DataType(length_type['data_type'], length_type['endianness'])
+                    self.create_data_struct(data['data_type'], data['endianness'], length_type)
+                self.invalidate_ui()
+                self.sppwag.process()
+
+    def invalidate_ui(self):
+        self.data_tree_save.setEnabled(self.data_model.rowCount() > 0)
 
     def get_struct(self):
         struct = []

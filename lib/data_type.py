@@ -38,3 +38,13 @@ class DataType:
 
     def get_endianness_value(self):
         return 'big' if self.endianness == 0 else 'little'
+
+    def serialize(self):
+        obj = {
+            'data_type': self.data_type,
+            'endianness': self.endianness,
+            'length': None
+        }
+        if self.length_type is not None:
+            obj['length'] = self.length_type.serialize()
+        return obj
