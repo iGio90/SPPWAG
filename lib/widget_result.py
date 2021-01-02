@@ -17,7 +17,7 @@ import binascii
 import traceback
 
 from PyByteBuffer import ByteBuffer
-from PyQt5.QtWidgets import QVBoxLayout, QLabel, QPlainTextEdit, QWidget
+from PyQt5.QtWidgets import QVBoxLayout, QLabel, QPlainTextEdit, QWidget, QHBoxLayout, QCheckBox
 from hexdump import hexdump
 
 from lib.data_type import DataType
@@ -34,6 +34,22 @@ class QResultWidget(QWidget):
         title = QLabel("Result")
         title.setStyleSheet("font: 12pt;")
         layout.addWidget(title)
+
+        options_layout = QHBoxLayout()
+        self.option_show_input_data = QCheckBox('Input data')
+        self.option_show_input_data.setChecked(True)
+        self.option_show_input_data.stateChanged.connect(self.process)
+        options_layout.addWidget(self.option_show_input_data)
+        self.option_show_data_field = QCheckBox('Data field')
+        self.option_show_data_field.setChecked(True)
+        self.option_show_data_field.stateChanged.connect(self.process)
+        options_layout.addWidget(self.option_show_data_field)
+        self.option_show_remnant = QCheckBox('Remnant')
+        self.option_show_remnant.setChecked(True)
+        self.option_show_remnant.stateChanged.connect(self.process)
+        options_layout.addWidget(self.option_show_remnant)
+
+        layout.addLayout(options_layout)
 
         self.result_box = QPlainTextEdit()
         self.result_box.setReadOnly(True)
@@ -61,7 +77,10 @@ class QResultWidget(QWidget):
                 row_n += 1
                 continue
 
-            self.result_box.appendHtml('%d: %s<br><br>{' % (row_n, binascii.hexlify(buf.array()).decode('utf8')))
+            input_data = '{'
+            if self.option_show_input_data.isChecked():
+                input_data = '%d: %s<br><br>{' % (row_n, binascii.hexlify(buf.array()).decode('utf8'))
+            self.result_box.appendHtml(input_data)
             buf.rewind()
 
             data_struct_rows = []
@@ -86,14 +105,16 @@ class QResultWidget(QWidget):
                         data = ByteBuffer.wrap(date_buf)
                         item_parsed = str(data.get(length, data_type.get_endianness_value()))
 
-                    item_bytes = binascii.hexlify(date_buf).decode('utf8')
-
-                    data_struct_rows.append(
-                        '%s%d: {<br>%s%s%s: %s<br>%s%s%s: %s<br>%s}' % (
-                            indent, data_field, indent, indent, 'data', item_bytes,
-                            indent, indent, 'value', item_parsed, indent
+                    data_row = '%s%d: {<br>' % (indent, data_field)
+                    if self.option_show_data_field.isChecked():
+                        item_bytes = binascii.hexlify(date_buf).decode('utf8')
+                        data_row += '%s%s%s: %s<br>' % (
+                            indent, indent, 'data', item_bytes
                         )
+                    data_row += '%s%s%s: %s<br>%s}' % (
+                        indent, indent, 'value', item_parsed, indent
                     )
+                    data_struct_rows.append(data_row)
                     data_field += 1
                 except AssertionError:
                     # not enough bytes to read
@@ -103,7 +124,8 @@ class QResultWidget(QWidget):
 
             self.result_box.appendHtml('<br>'.join(data_struct_rows))
             self.result_box.appendHtml('}<br><br>')
-            self.result_box.appendHtml(hexdump(buf.array(), result='return').replace(' ', '&nbsp;&nbsp;'))
-            self.result_box.appendHtml('<br><br><br>')
+            if self.option_show_remnant.isChecked():
+                self.result_box.appendHtml(hexdump(buf.array(), result='return').replace(' ', '&nbsp;&nbsp;'))
+                self.result_box.appendHtml('<br><br><br>')
             row_n += 1
         self.result_box.verticalScrollBar().setValue(pos)
