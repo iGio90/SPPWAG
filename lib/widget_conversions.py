@@ -12,7 +12,7 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER I
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
-
+import base64
 import binascii
 
 from PyQt5.QtWidgets import QVBoxLayout, QComboBox, QHBoxLayout, QPlainTextEdit, QWidget
@@ -69,13 +69,16 @@ class QConversionsWidget(QWidget):
             if from_type == 0:
                 data = data.encode('utf8')
             elif from_type == 1:
-                data = binascii.b2a_hex(data)
+                data = base64.b64decode(data.encode('utf8'))
             elif from_type == 2:
                 data = bytes.fromhex(data)
 
             result = ''
             if to_type == 0:
-                result = data.decode('utf8')
+                try:
+                    result = data.decode('utf8')
+                except:
+                    result = "".join(map(chr, data))
             elif to_type == 1:
                 result = binascii.b2a_base64(data)
             elif to_type == 2:
