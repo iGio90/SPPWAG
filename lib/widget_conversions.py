@@ -69,7 +69,10 @@ class QConversionsWidget(QWidget):
             if from_type == 0:
                 data = data.encode('utf8')
             elif from_type == 1:
-                data = base64.b64decode(data.encode('utf8'))
+                try:
+                    data = base64.b64decode(data.encode('utf8'))
+                except:
+                    data = b''
             elif from_type == 2:
                 data = bytes.fromhex(data)
 

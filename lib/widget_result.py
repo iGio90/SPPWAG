@@ -119,6 +119,8 @@ class QResultWidget(QWidget):
                 except AssertionError:
                     # not enough bytes to read
                     continue
+                except UnicodeDecodeError:
+                    continue
                 except:
                     traceback.print_exc()
 
